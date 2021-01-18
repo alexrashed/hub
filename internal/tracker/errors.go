@@ -10,13 +10,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// ErrorsCollector interface defines the methods that an errors collector
-// implementation should provide.
-type ErrorsCollector interface {
-	Append(repositoryID string, err error)
-	Flush()
-}
-
 const (
 	// maxErrorsPerRepository represents the maximum number of errors we want
 	// to collect for a given repository.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -15,12 +14,6 @@ import (
 	"github.com/artifacthub/hub/internal/pkg"
 	"github.com/artifacthub/hub/internal/repo"
 	"github.com/artifacthub/hub/internal/tracker"
-	"github.com/artifacthub/hub/internal/tracker/falco"
-	"github.com/artifacthub/hub/internal/tracker/generic"
-	"github.com/artifacthub/hub/internal/tracker/helm"
-	"github.com/artifacthub/hub/internal/tracker/helmplugin"
-	"github.com/artifacthub/hub/internal/tracker/krew"
-	"github.com/artifacthub/hub/internal/tracker/olm"
 	"github.com/artifacthub/hub/internal/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/time/rate"
@@ -28,7 +21,6 @@ import (
 
 const (
 	githubMaxRequestsPerHour = 5000
-	cloudNativeSecurityHub   = "https://github.com/falcosecurity/cloud-native-security-hub/resources/falco"
 )
 
 func main() {
@@ -83,14 +75,15 @@ func main() {
 		<-time.After(1 * time.Hour)
 		githubRL.SetLimit(rate.Every(1 * time.Hour / githubMaxRequestsPerHour))
 	}()
-	svc := &tracker.Services{
+	svc := &hub.TrackerServices{
 		Ctx:      ctx,
 		Cfg:      cfg,
 		Rm:       rm,
 		Pm:       pm,
-		Is:       is,
+		Rc:       &repo.Cloner{},
+		Oe:       &repo.OLMOCIExporter{},
 		Ec:       ec,
-		Hc:       &http.Client{Timeout: 10 * time.Second},
+		Is:       is,
 		GithubRL: githubRL,
 	}
 
@@ -113,30 +106,8 @@ L:
 				<-limiter
 				wg.Done()
 			}()
-			var t tracker.Tracker
-			switch r.Kind {
-			case hub.Falco:
-				// Temporary solution to maintain backwards compatibility with
-				// the only Falco rules repository registered at the moment in
-				// artifacthub.io using the structure and metadata format used
-				// by the cloud native security hub.
-				if r.URL == cloudNativeSecurityHub {
-					t = falco.NewTracker(svc, r)
-				} else {
-					t = generic.NewTracker(svc, r)
-				}
-			case hub.Helm:
-				t = helm.NewTracker(svc, r)
-			case hub.HelmPlugin:
-				t = helmplugin.NewTracker(svc, r)
-			case hub.Krew:
-				t = krew.NewTracker(svc, r)
-			case hub.OLM:
-				t = olm.NewTracker(svc, r)
-			case hub.OPA, hub.TBAction:
-				t = generic.NewTracker(svc, r)
-			}
-			if err := tracker.TrackRepository(ctx, cfg, rm, t, r); err != nil {
+			t := tracker.New(svc, r)
+			if err := t.Run(); err != nil {
 				svc.Ec.Append(r.RepositoryID, err)
 				log.Error().Err(err).Str("repo", r.Name).Str("kind", hub.GetKindName(r.Kind)).Send()
 			}
