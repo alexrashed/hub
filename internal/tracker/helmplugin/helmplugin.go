@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/artifacthub/hub/internal/hub"
 	"github.com/artifacthub/hub/internal/license"
 	"github.com/artifacthub/hub/internal/pkg"
@@ -66,7 +67,11 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		}
 
 		// Prepare and store package version
-		p := preparePackage(s.i.Repository, md, pkgPath)
+		p, err := preparePackage(s.i.Repository, md, pkgPath)
+		if err != nil {
+			s.warn(fmt.Errorf("error preparing package: %w", err))
+			return nil
+		}
 		packagesAvailable[pkg.BuildKey(p)] = p
 
 		return nil
@@ -87,11 +92,18 @@ func (s *TrackerSource) warn(err error) {
 
 // preparePackage prepares a package version using the plugin metadata and the
 // files in the path provided.
-func preparePackage(r *hub.Repository, md *plugin.Metadata, pkgPath string) *hub.Package {
+func preparePackage(r *hub.Repository, md *plugin.Metadata, pkgPath string) (*hub.Package, error) {
+	// Parse and validate version
+	sv, err := semver.NewVersion(md.Version)
+	if err != nil {
+		return nil, fmt.Errorf("invalid package %s version (%s): %w", md.Name, md.Name, err)
+	}
+	version := sv.String()
+
 	// Prepare package from metadata
 	p := &hub.Package{
 		Name:        md.Name,
-		Version:     md.Version,
+		Version:     version,
 		Description: md.Description,
 		Keywords: []string{
 			"helm",
@@ -126,5 +138,5 @@ func preparePackage(r *hub.Repository, md *plugin.Metadata, pkgPath string) *hub
 		}
 	}
 
-	return p
+	return p, nil
 }

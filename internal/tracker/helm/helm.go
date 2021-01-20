@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Masterminds/semver"
+	"github.com/Masterminds/semver/v3"
 	"github.com/artifacthub/hub/internal/hub"
 	"github.com/artifacthub/hub/internal/img"
 	"github.com/artifacthub/hub/internal/license"
@@ -103,7 +103,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 				}()
 				p, err := s.preparePackage(chartVersion, storeLogo)
 				if err != nil {
-					s.warn(chartVersion.Metadata, err)
+					s.warn(chartVersion.Metadata, fmt.Errorf("error preparing package: %w", err))
 					return
 				}
 				mu.Lock()
@@ -207,11 +207,6 @@ func (s *TrackerSource) preparePackage(chartVersion *helmrepo.ChartVersion, stor
 		chart, err := s.loadChartArchive(chartURL)
 		if err != nil {
 			return nil, fmt.Errorf("error loading chart (%s): %w", chartURL.String(), err)
-		}
-		indexName, indexVersion := p.Name, p.Version
-		md := chart.Metadata
-		if md.Name != indexName || md.Version != indexVersion {
-			return nil, fmt.Errorf("name and version in index (%s:%s) do not match archive", indexName, indexVersion)
 		}
 
 		// Store logo when available if requested

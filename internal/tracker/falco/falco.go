@@ -51,7 +51,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 			return nil
 		}
 
-		// Read and parse rules metadata file and validate it
+		// Read and parse rules metadata file
 		data, err := ioutil.ReadFile(pkgPath)
 		if err != nil {
 			s.warn(fmt.Errorf("error reading rules metadata file: %w", err))
@@ -62,10 +62,6 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 			s.warn(fmt.Errorf("error unmarshaling rules metadata file: %w", err))
 			return nil
 		}
-		if _, err := semver.StrictNewVersion(md.Version); err != nil {
-			s.warn(fmt.Errorf("invalid package %s version (%s): %w", md.Name, md.Name, err))
-			return nil
-		}
 
 		// Only Falco rules are supported
 		if md.Kind != "FalcoRules" {
@@ -73,7 +69,11 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		}
 
 		// Prepare and store package version
-		p := s.preparePackage(s.i.Repository, md, strings.TrimPrefix(pkgPath, s.i.BasePath))
+		p, err := s.preparePackage(s.i.Repository, md, strings.TrimPrefix(pkgPath, s.i.BasePath))
+		if err != nil {
+			s.warn(fmt.Errorf("error preparing package: %w", err))
+			return nil
+		}
 		packagesAvailable[pkg.BuildKey(p)] = p
 
 		return nil
@@ -86,7 +86,14 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 }
 
 // preparePackage prepares a package version using the rules metadata provided.
-func (s *TrackerSource) preparePackage(r *hub.Repository, md *RulesMetadata, pkgPath string) *hub.Package {
+func (s *TrackerSource) preparePackage(r *hub.Repository, md *RulesMetadata, pkgPath string) (*hub.Package, error) {
+	// Parse and validate version
+	sv, err := semver.NewVersion(md.Version)
+	if err != nil {
+		return nil, fmt.Errorf("invalid package %s version (%s): %w", md.Name, md.Name, err)
+	}
+	version := sv.String()
+
 	// Prepare source link url
 	var repoBaseURL, pkgsPath, provider string
 	matches := repo.GitRepoURLRE.FindStringSubmatch(r.URL)
@@ -109,9 +116,9 @@ func (s *TrackerSource) preparePackage(r *hub.Repository, md *RulesMetadata, pkg
 	// Prepare package from metadata
 	p := &hub.Package{
 		Name:        md.Name,
+		Version:     version,
 		Description: md.ShortDescription,
 		Keywords:    md.Keywords,
-		Version:     md.Version,
 		Readme:      md.Description,
 		Provider:    md.Vendor,
 		Data: map[string]interface{}{
@@ -131,17 +138,17 @@ func (s *TrackerSource) preparePackage(r *hub.Repository, md *RulesMetadata, pkg
 		githubToken := s.i.Svc.Cfg.GetString("tracker.githubToken")
 		data, err := img.Get(s.i.Svc.Ctx, s.i.Svc.Hc, githubToken, s.i.Svc.GithubRL, md.Icon)
 		if err != nil {
-			s.warn(fmt.Errorf("error downloading package %s version %s image: %w", md.Name, md.Version, err))
+			s.warn(fmt.Errorf("error downloading package %s version %s image: %w", p.Name, p.Version, err))
 		} else {
 			p.LogoURL = md.Icon
 			p.LogoImageID, err = s.i.Svc.Is.SaveImage(s.i.Svc.Ctx, data)
 			if err != nil && !errors.Is(err, image.ErrFormat) {
-				s.warn(fmt.Errorf("error saving package %s version %s image: %w", md.Name, md.Version, err))
+				s.warn(fmt.Errorf("error saving package %s version %s image: %w", p.Name, p.Version, err))
 			}
 		}
 	}
 
-	return p
+	return p, nil
 }
 
 // warn is a helper that sends the error provided to the errors collector and

@@ -56,7 +56,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		// Prepare and store package version
 		p, err := s.preparePackage(s.i.Repository, md, pkgPath)
 		if err != nil {
-			s.warn(err)
+			s.warn(fmt.Errorf("error preparing package: %w", err))
 			return nil
 		}
 		packagesAvailable[pkg.BuildKey(p)] = p

@@ -3,7 +3,6 @@ module github.com/artifacthub/hub
 go 1.15
 
 require (
-	github.com/Masterminds/semver v1.5.0
 	github.com/Masterminds/semver/v3 v3.1.1
 	github.com/containerd/containerd v1.3.4
 	github.com/coreos/go-oidc v2.2.1+incompatible
