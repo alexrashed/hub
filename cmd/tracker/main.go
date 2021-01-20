@@ -108,8 +108,8 @@ L:
 			}()
 			t := tracker.New(svc, r)
 			if err := t.Run(); err != nil {
-				svc.Ec.Append(r.RepositoryID, err)
 				log.Error().Err(err).Str("repo", r.Name).Str("kind", hub.GetKindName(r.Kind)).Send()
+				svc.Ec.Append(r.RepositoryID, err)
 			}
 		}(r)
 	}

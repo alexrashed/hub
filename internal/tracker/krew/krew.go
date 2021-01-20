@@ -59,16 +59,12 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		// Read and parse plugin manifest file
 		data, err := ioutil.ReadFile(filepath.Join(pluginsPath, file.Name()))
 		if err != nil {
-			err := fmt.Errorf("error reading plugin manifest file: %w", err)
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(fmt.Errorf("error reading plugin manifest file: %w", err))
 			continue
 		}
 		var manifest *index.Plugin
 		if err = yaml.Unmarshal(data, &manifest); err != nil || manifest == nil {
-			err := fmt.Errorf("error unmarshaling plugin manifest file: %w", err)
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(fmt.Errorf("error unmarshaling plugin manifest file: %w", err))
 			continue
 		}
 
@@ -83,6 +79,13 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	}
 
 	return packagesAvailable, nil
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(err error) {
+	s.i.Logger.Warn().Err(err).Send()
+	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // preparePackage prepares a package version using the plugin manifest provided.

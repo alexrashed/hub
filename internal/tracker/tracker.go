@@ -72,13 +72,13 @@ func (t *Tracker) Run() error {
 	// Load packages already registered from this repository
 	t.packagesRegistered, err = t.svc.Rm.GetPackagesDigest(t.svc.Ctx, t.r.RepositoryID)
 	if err != nil {
-		return fmt.Errorf("error getting registered packages: %w", err)
+		return fmt.Errorf("error getting packages registered: %w", err)
 	}
 
 	// Get packages available in repository
 	packagesAvailable, err := t.getPackagesAvailable()
 	if err != nil {
-		return fmt.Errorf("error getting available packages: %w", err)
+		return fmt.Errorf("error getting packages available: %w", err)
 	}
 
 	// Register available packages when needed
@@ -192,7 +192,9 @@ func (t *Tracker) getRepositoryMetadata() *hub.RepositoryMetadata {
 	return md
 }
 
-// getPackagesAvailable returns the packages available in the repository.
+// getPackagesAvailable returns the packages available in the repository. The
+// tracker source used to get the packages will depend on the kind of the repo
+// being tracked.
 func (t *Tracker) getPackagesAvailable() (map[string]*hub.Package, error) {
 	i := &hub.TrackerSourceInput{
 		Ctx:                t.svc.Ctx,
@@ -265,8 +267,8 @@ func (t *Tracker) shouldIgnorePackage(name, version string) bool {
 // warn is a helper that sends the error provided to the errors collector and
 // logs it as a warning.
 func (t *Tracker) warn(err error) {
-	t.svc.Ec.Append(t.r.RepositoryID, err)
 	t.logger.Warn().Err(err).Send()
+	t.svc.Ec.Append(t.r.RepositoryID, err)
 }
 
 // matchesEntry checks if the package name and version provide match a given

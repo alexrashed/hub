@@ -114,8 +114,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 				}()
 				p, err := s.preparePackage(chartVersion)
 				if err != nil {
-					s.i.Logger.Warn().Err(err).Send()
-					s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+					s.warn(chartVersion.Metadata, err)
 					return
 				}
 				mu.Lock()
@@ -179,7 +178,7 @@ func (s *TrackerSource) preparePackage(chartVersion *helmrepo.ChartVersion) (*hu
 	md := chartVersion.Metadata
 	sv, err := semver.NewVersion(md.Version)
 	if err != nil {
-		return nil, fmt.Errorf("invalid package %s version (%s): %w", md.Name, md.Version, err)
+		return nil, fmt.Errorf("invalid package version: %w", err)
 	}
 	version := sv.String()
 
@@ -342,6 +341,16 @@ func (s *TrackerSource) chartHasProvenanceFile(u string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(md *chart.Metadata, err error) {
+	err = fmt.Errorf("%s (package: %s version: %s)", err.Error(), md.Name, md.Version)
+	s.i.Logger.Warn().Err(err).Send()
+	if !md.Deprecated {
+		s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+	}
 }
 
 // enrichPackageFromArchive adds some extra information to the package from the

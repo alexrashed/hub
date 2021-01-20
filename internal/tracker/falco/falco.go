@@ -51,22 +51,16 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		// Read and parse rules metadata file and validate it
 		data, err := ioutil.ReadFile(pkgPath)
 		if err != nil {
-			err := fmt.Errorf("error reading rules metadata file: %w", err)
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(fmt.Errorf("error reading rules metadata file: %w", err))
 			return nil
 		}
 		var md *RulesMetadata
 		if err = yaml.Unmarshal(data, &md); err != nil || md == nil {
-			err := fmt.Errorf("error unmarshaling rules metadata file: %w", err)
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(fmt.Errorf("error unmarshaling rules metadata file: %w", err))
 			return nil
 		}
 		if _, err := semver.StrictNewVersion(md.Version); err != nil {
-			err := fmt.Errorf("invalid package %s version (%s): %w", md.Name, md.Name, err)
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(fmt.Errorf("invalid package %s version (%s): %w", md.Name, md.Name, err))
 			return nil
 		}
 
@@ -86,6 +80,13 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	}
 
 	return packagesAvailable, nil
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(err error) {
+	s.i.Logger.Warn().Err(err).Send()
+	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // preparePackage prepares a package version using the rules metadata provided.

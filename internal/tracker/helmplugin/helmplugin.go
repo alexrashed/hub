@@ -55,17 +55,13 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		data, err := ioutil.ReadFile(filepath.Join(pkgPath, plugin.PluginFileName))
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
-				err := fmt.Errorf("error reading plugin metadata file: %w", err)
-				s.i.Logger.Warn().Err(err).Send()
-				s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+				s.warn(fmt.Errorf("error reading plugin metadata file: %w", err))
 			}
 			return nil
 		}
 		var md *plugin.Metadata
 		if err = yaml.Unmarshal(data, &md); err != nil || md == nil {
-			err := fmt.Errorf("error unmarshaling plugin metadata file: %w", err)
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(fmt.Errorf("error unmarshaling plugin metadata file: %w", err))
 			return nil
 		}
 
@@ -80,6 +76,13 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	}
 
 	return packagesAvailable, nil
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(err error) {
+	s.i.Logger.Warn().Err(err).Send()
+	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // preparePackage prepares a package version using the plugin metadata and the

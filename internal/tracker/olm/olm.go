@@ -66,9 +66,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		// Get package manifest
 		manifest, err := getManifest(pkgPath)
 		if err != nil {
-			err := fmt.Errorf("error getting package manifest: %w", err)
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(fmt.Errorf("error getting package manifest: %w", err))
 			return nil
 		}
 		if manifest == nil {
@@ -80,9 +78,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		pkgName := manifest.PackageName
 		versionsUnfiltered, err := ioutil.ReadDir(pkgPath)
 		if err != nil {
-			err := fmt.Errorf("error reading package %s versions: %w", pkgName, err)
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(fmt.Errorf("error reading package %s versions: %w", pkgName, err))
 			return nil
 		}
 		var versions []os.FileInfo
@@ -91,9 +87,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 				continue
 			}
 			if _, err := semver.StrictNewVersion(entryV.Name()); err != nil {
-				err := fmt.Errorf("invalid package %s version (%s): %w", pkgName, entryV.Name(), err)
-				s.i.Logger.Warn().Err(err).Send()
-				s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+				s.warn(fmt.Errorf("invalid package %s version (%s): %w", pkgName, entryV.Name(), err))
 				continue
 			} else {
 				versions = append(versions, entryV)
@@ -107,9 +101,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 			pkgVersionPath := filepath.Join(pkgPath, version)
 			csv, csvData, err := getCSV(pkgVersionPath)
 			if err != nil {
-				err := fmt.Errorf("error getting package %s version %s csv: %w", pkgName, version, err)
-				s.i.Logger.Warn().Err(err).Send()
-				s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+				s.warn(fmt.Errorf("error getting package %s version %s csv: %w", pkgName, version, err))
 				continue
 			}
 
@@ -125,6 +117,13 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	}
 
 	return packagesAvailable, nil
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(err error) {
+	s.i.Logger.Warn().Err(err).Send()
+	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // preparePackage prepares a package version using the package manifest and csv.

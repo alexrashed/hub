@@ -47,8 +47,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		md, err := pkg.GetPackageMetadata(filepath.Join(pkgPath, hub.PackageMetadataFile))
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
-				s.i.Logger.Warn().Err(err).Send()
-				s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+				s.warn(err)
 			}
 			return nil
 		}
@@ -56,8 +55,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		// Prepare and store package version
 		p, err := preparePackage(s.i.Repository, md, pkgPath)
 		if err != nil {
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.warn(err)
 			return nil
 		}
 		packagesAvailable[pkg.BuildKey(p)] = p
@@ -69,6 +67,13 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	}
 
 	return packagesAvailable, nil
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(err error) {
+	s.i.Logger.Warn().Err(err).Send()
+	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // preparePackage prepares a package version using the metadata and the files
