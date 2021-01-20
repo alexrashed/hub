@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,10 +12,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/Masterminds/semver"
 	"github.com/artifacthub/hub/internal/hub"
+	"github.com/artifacthub/hub/internal/img"
 	"github.com/artifacthub/hub/internal/license"
 	"github.com/artifacthub/hub/internal/pkg"
 	"github.com/artifacthub/hub/internal/repo"
@@ -22,7 +23,6 @@ import (
 	"github.com/deislabs/oras/pkg/content"
 	ctxo "github.com/deislabs/oras/pkg/context"
 	"github.com/deislabs/oras/pkg/oras"
-	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
@@ -50,11 +50,9 @@ const (
 
 // TrackerSource is a hub.TrackerSource implementation for Helm repositories.
 type TrackerSource struct {
-	i        *hub.TrackerSourceInput
-	il       hub.HelmIndexLoader
-	tg       hub.OCITagsGetter
-	hc       *http.Client
-	githubRL *rate.Limiter
+	i  *hub.TrackerSourceInput
+	il hub.HelmIndexLoader
+	tg hub.OCITagsGetter
 }
 
 // NewTrackerSource creates a new TrackerSource instance.
@@ -69,17 +67,7 @@ func NewTrackerSource(i *hub.TrackerSourceInput, opts ...func(s *TrackerSource))
 	if s.tg == nil {
 		s.tg = &repo.OCITagsGetter{}
 	}
-	if s.hc == nil {
-		s.hc = &http.Client{Timeout: 10 * time.Second}
-	}
 	return s
-}
-
-// WithGithubRL allows providing a specific Github rate limiter.
-func WithGithubRL(githubRL *rate.Limiter) func(s *TrackerSource) {
-	return func(s *TrackerSource) {
-		s.githubRL = githubRL
-	}
 }
 
 // GetPackagesAvailable implements the TrackerSource interface.
@@ -95,24 +83,25 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	limiter := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	for _, chartVersions := range charts {
-		for _, chartVersion := range chartVersions {
+		for i, chartVersion := range chartVersions {
 			// Return ASAP if context is cancelled
 			select {
-			case <-s.i.Ctx.Done():
+			case <-s.i.Svc.Ctx.Done():
 				wg.Wait()
-				return nil, s.i.Ctx.Err()
+				return nil, s.i.Svc.Ctx.Err()
 			default:
 			}
 
 			// Prepare and store package version
 			limiter <- struct{}{}
 			wg.Add(1)
+			storeLogo := i == 0
 			go func(chartVersion *helmrepo.ChartVersion) {
 				defer func() {
 					<-limiter
 					wg.Done()
 				}()
-				p, err := s.preparePackage(chartVersion)
+				p, err := s.preparePackage(chartVersion, storeLogo)
 				if err != nil {
 					s.warn(chartVersion.Metadata, err)
 					return
@@ -149,7 +138,7 @@ func (s *TrackerSource) getCharts() (map[string][]*helmrepo.ChartVersion, error)
 		}
 	case "oci":
 		// Get versions (tags) available in the repository
-		versions, err := s.tg.Tags(s.i.Ctx, s.i.Repository)
+		versions, err := s.tg.Tags(s.i.Svc.Ctx, s.i.Repository)
 		if err != nil {
 			return nil, fmt.Errorf("error getting repository available versions: %w", err)
 		}
@@ -173,7 +162,7 @@ func (s *TrackerSource) getCharts() (map[string][]*helmrepo.ChartVersion, error)
 }
 
 // preparePackage prepares a package version using the chart version provided.
-func (s *TrackerSource) preparePackage(chartVersion *helmrepo.ChartVersion) (*hub.Package, error) {
+func (s *TrackerSource) preparePackage(chartVersion *helmrepo.ChartVersion, storeLogo bool) (*hub.Package, error) {
 	// Parse package version
 	md := chartVersion.Metadata
 	sv, err := semver.NewVersion(md.Version)
@@ -212,19 +201,32 @@ func (s *TrackerSource) preparePackage(chartVersion *helmrepo.ChartVersion) (*hu
 	// registered again, we need to enrich the package with extra information
 	// available in the chart archive, like the readme file, the license, etc.
 	// Otherwise, the minimal version of the package prepared above is enough.
-	bypassDigestCheck := s.i.Cfg.GetBool("tracker.bypassDigestCheck")
+	bypassDigestCheck := s.i.Svc.Cfg.GetBool("tracker.bypassDigestCheck")
 	if _, ok := s.i.PackagesRegistered[pkg.BuildKey(p)]; !ok || bypassDigestCheck {
 		// Load chart from remote archive
 		chart, err := s.loadChartArchive(chartURL)
 		if err != nil {
 			return nil, fmt.Errorf("error loading chart (%s): %w", chartURL.String(), err)
 		}
-
-		// Check name and version in archive match the index
 		indexName, indexVersion := p.Name, p.Version
 		md := chart.Metadata
 		if md.Name != indexName || md.Version != indexVersion {
 			return nil, fmt.Errorf("name and version in index (%s:%s) do not match archive", indexName, indexVersion)
+		}
+
+		// Store logo when available if requested
+		if md.Icon != "" && storeLogo {
+			githubToken := s.i.Svc.Cfg.GetString("tracker.githubToken")
+			data, err := img.Get(s.i.Svc.Ctx, s.i.Svc.Hc, githubToken, s.i.Svc.GithubRL, md.Icon)
+			if err != nil {
+				s.warn(md, fmt.Errorf("error getting image %s: %w", md.Icon, err))
+			} else {
+				p.LogoURL = md.Icon
+				p.LogoImageID, err = s.i.Svc.Is.SaveImage(s.i.Svc.Ctx, data)
+				if err != nil && !errors.Is(err, image.ErrFormat) {
+					s.warn(md, fmt.Errorf("error saving image %s: %w", md.Icon, err))
+				}
+			}
 		}
 
 		// Check if the chart version is signed (has provenance file)
@@ -256,18 +258,18 @@ func (s *TrackerSource) loadChartArchive(u *url.URL) (*chart.Chart, error) {
 		req, _ := http.NewRequest("GET", u.String(), nil)
 		if u.Host == "github.com" || u.Host == "raw.githubusercontent.com" {
 			// Authenticate and rate limit requests to Github
-			githubToken := s.i.Cfg.GetString("tracker.githubToken")
+			githubToken := s.i.Svc.Cfg.GetString("tracker.githubToken")
 			if githubToken != "" {
 				req.Header.Set("Authorization", fmt.Sprintf("token %s", githubToken))
 			}
-			if s.githubRL != nil {
-				_ = s.githubRL.Wait(s.i.Ctx)
+			if s.i.Svc.GithubRL != nil {
+				_ = s.i.Svc.GithubRL.Wait(s.i.Svc.Ctx)
 			}
 		}
 		if s.i.Repository.AuthUser != "" || s.i.Repository.AuthPass != "" {
 			req.SetBasicAuth(s.i.Repository.AuthUser, s.i.Repository.AuthPass)
 		}
-		resp, err := s.hc.Do(req)
+		resp, err := s.i.Svc.Hc.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -289,7 +291,7 @@ func (s *TrackerSource) loadChartArchive(u *url.URL) (*chart.Chart, error) {
 		}
 		store := content.NewMemoryStore()
 		_, layers, err := oras.Pull(
-			ctxo.WithLoggerDiscarded(s.i.Ctx),
+			ctxo.WithLoggerDiscarded(s.i.Svc.Ctx),
 			docker.NewResolver(resolverOptions),
 			ref,
 			store,
@@ -332,7 +334,7 @@ func (s *TrackerSource) chartHasProvenanceFile(u string) (bool, error) {
 	if s.i.Repository.AuthUser != "" || s.i.Repository.AuthPass != "" {
 		req.SetBasicAuth(s.i.Repository.AuthUser, s.i.Repository.AuthPass)
 	}
-	resp, err := s.hc.Do(req)
+	resp, err := s.i.Svc.Hc.Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -347,9 +349,9 @@ func (s *TrackerSource) chartHasProvenanceFile(u string) (bool, error) {
 // logs it as a warning.
 func (s *TrackerSource) warn(md *chart.Metadata, err error) {
 	err = fmt.Errorf("%s (package: %s version: %s)", err.Error(), md.Name, md.Version)
-	s.i.Logger.Warn().Err(err).Send()
+	s.i.Svc.Logger.Warn().Err(err).Send()
 	if !md.Deprecated {
-		s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+		s.i.Svc.Ec.Append(s.i.Repository.RepositoryID, err)
 	}
 }
 

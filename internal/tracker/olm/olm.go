@@ -1,12 +1,14 @@
 package olm
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,8 +54,8 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	err := filepath.Walk(s.i.BasePath, func(pkgPath string, info os.FileInfo, err error) error {
 		// Return ASAP if context is cancelled
 		select {
-		case <-s.i.Ctx.Done():
-			return s.i.Ctx.Err()
+		case <-s.i.Svc.Ctx.Done():
+			return s.i.Svc.Ctx.Err()
 		default:
 		}
 
@@ -93,9 +95,14 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 				versions = append(versions, entryV)
 			}
 		}
+		sort.Slice(versions, func(i, j int) bool {
+			vi, _ := semver.NewVersion(versions[i].Name())
+			vj, _ := semver.NewVersion(versions[j].Name())
+			return vj.LessThan(vi)
+		})
 
 		// Process package versions
-		for _, entryV := range versions {
+		for i, entryV := range versions {
 			// Get package version CSV
 			version := entryV.Name()
 			pkgVersionPath := filepath.Join(pkgPath, version)
@@ -106,7 +113,8 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 			}
 
 			// Prepare and store package version
-			p := preparePackage(s.i.Repository, manifest, csv, csvData)
+			storeLogo := i == 0
+			p := s.preparePackage(s.i.Repository, manifest, csv, csvData, storeLogo)
 			packagesAvailable[pkg.BuildKey(p)] = p
 		}
 
@@ -119,19 +127,13 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	return packagesAvailable, nil
 }
 
-// warn is a helper that sends the error provided to the errors collector and
-// logs it as a warning.
-func (s *TrackerSource) warn(err error) {
-	s.i.Logger.Warn().Err(err).Send()
-	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
-}
-
 // preparePackage prepares a package version using the package manifest and csv.
-func preparePackage(
+func (s *TrackerSource) preparePackage(
 	r *hub.Repository,
 	manifest *manifests.PackageManifest,
 	csv *operatorsv1alpha1.ClusterServiceVersion,
 	csvData []byte,
+	storeLogo bool,
 ) *hub.Package {
 	// Prepare package from manifest and csv
 	p := &hub.Package{
@@ -184,6 +186,19 @@ func preparePackage(
 			Name: "source",
 			URL:  csv.Annotations["repository"],
 		})
+	}
+
+	// Store logo when available if requested
+	if storeLogo && len(csv.Spec.Icon) > 0 && csv.Spec.Icon[0].Data != "" {
+		data, err := base64.StdEncoding.DecodeString(csv.Spec.Icon[0].Data)
+		if err != nil {
+			s.warn(fmt.Errorf("error decoding package %s logo image: %w", p.Name, err))
+		} else {
+			p.LogoImageID, err = s.i.Svc.Is.SaveImage(s.i.Svc.Ctx, data)
+			if err != nil {
+				s.warn(fmt.Errorf("error saving package %s image: %w", p.Name, err))
+			}
+		}
 	}
 
 	// Maintainers
@@ -250,6 +265,13 @@ func preparePackage(
 	}
 
 	return p
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(err error) {
+	s.i.Svc.Logger.Warn().Err(err).Send()
+	s.i.Svc.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // getManifest reads and parses the package manifest.

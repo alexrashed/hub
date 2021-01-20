@@ -46,8 +46,8 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	for _, file := range pluginManifestFiles {
 		// Return ASAP if context is cancelled
 		select {
-		case <-s.i.Ctx.Done():
-			return nil, s.i.Ctx.Err()
+		case <-s.i.Svc.Ctx.Done():
+			return nil, s.i.Svc.Ctx.Err()
 		default:
 		}
 
@@ -71,8 +71,8 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		// Prepare and store package version
 		p, err := preparePackage(s.i.Repository, manifest)
 		if err != nil {
-			s.i.Logger.Warn().Err(err).Send()
-			s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+			s.i.Svc.Logger.Warn().Err(err).Send()
+			s.i.Svc.Ec.Append(s.i.Repository.RepositoryID, err)
 			continue
 		}
 		packagesAvailable[pkg.BuildKey(p)] = p
@@ -84,8 +84,8 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 // warn is a helper that sends the error provided to the errors collector and
 // logs it as a warning.
 func (s *TrackerSource) warn(err error) {
-	s.i.Logger.Warn().Err(err).Send()
-	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
+	s.i.Svc.Logger.Warn().Err(err).Send()
+	s.i.Svc.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // preparePackage prepares a package version using the plugin manifest provided.

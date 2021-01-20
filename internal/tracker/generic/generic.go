@@ -3,6 +3,7 @@ package generic
 import (
 	"errors"
 	"fmt"
+	"image"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -32,8 +33,8 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	err := filepath.Walk(s.i.BasePath, func(pkgPath string, info os.FileInfo, err error) error {
 		// Return ASAP if context is cancelled
 		select {
-		case <-s.i.Ctx.Done():
-			return s.i.Ctx.Err()
+		case <-s.i.Svc.Ctx.Done():
+			return s.i.Svc.Ctx.Err()
 		default:
 		}
 
@@ -53,7 +54,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		}
 
 		// Prepare and store package version
-		p, err := preparePackage(s.i.Repository, md, pkgPath)
+		p, err := s.preparePackage(s.i.Repository, md, pkgPath)
 		if err != nil {
 			s.warn(err)
 			return nil
@@ -69,22 +70,28 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	return packagesAvailable, nil
 }
 
-// warn is a helper that sends the error provided to the errors collector and
-// logs it as a warning.
-func (s *TrackerSource) warn(err error) {
-	s.i.Logger.Warn().Err(err).Send()
-	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
-}
-
 // preparePackage prepares a package version using the metadata and the files
 // in the path provided.
-func preparePackage(r *hub.Repository, md *hub.PackageMetadata, pkgPath string) (*hub.Package, error) {
+func (s *TrackerSource) preparePackage(r *hub.Repository, md *hub.PackageMetadata, pkgPath string) (*hub.Package, error) {
 	// Prepare package from metadata
 	p, err := pkg.PreparePackageFromMetadata(md)
 	if err != nil {
 		return nil, fmt.Errorf("error preparing package %s version %s from metadata: %w", md.Name, md.Version, err)
 	}
 	p.Repository = r
+
+	// Store logo image when available
+	if md.LogoPath != "" {
+		data, err := ioutil.ReadFile(filepath.Join(pkgPath, md.LogoPath))
+		if err != nil {
+			s.warn(fmt.Errorf("error reading package %s version %s logo: %w", md.Name, md.Version, err))
+		} else {
+			p.LogoImageID, err = s.i.Svc.Is.SaveImage(s.i.Svc.Ctx, data)
+			if err != nil && !errors.Is(err, image.ErrFormat) {
+				s.warn(fmt.Errorf("error saving package %s version %s logo: %w", md.Name, md.Version, err))
+			}
+		}
+	}
 
 	// Include kind specific data into package
 	ignorer, err := ignore.CompileIgnoreLines(md.Ignore...)
@@ -104,6 +111,13 @@ func preparePackage(r *hub.Repository, md *hub.PackageMetadata, pkgPath string) 
 	p.Data = data
 
 	return p, nil
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(err error) {
+	s.i.Svc.Logger.Warn().Err(err).Send()
+	s.i.Svc.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // prepareFalcoData reads and formats Falco specific data available in the path

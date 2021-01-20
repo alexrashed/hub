@@ -193,13 +193,17 @@ func (t *Tracker) getRepositoryMetadata() *hub.RepositoryMetadata {
 // being tracked.
 func (t *Tracker) getPackagesAvailable() (map[string]*hub.Package, error) {
 	i := &hub.TrackerSourceInput{
-		Ctx:                t.svc.Ctx,
-		Cfg:                t.svc.Cfg,
 		Repository:         t.r,
 		PackagesRegistered: t.packagesRegistered,
 		BasePath:           t.basePath,
-		Logger:             t.logger,
-		Ec:                 t.svc.Ec,
+		Svc: &hub.TrackerSourceServices{
+			Ctx:    t.svc.Ctx,
+			Cfg:    t.svc.Cfg,
+			Ec:     t.svc.Ec,
+			Hc:     t.svc.Hc,
+			Is:     t.svc.Is,
+			Logger: t.logger,
+		},
 	}
 
 	var source hub.TrackerSource
@@ -215,7 +219,7 @@ func (t *Tracker) getPackagesAvailable() (map[string]*hub.Package, error) {
 			source = generic.NewTrackerSource(i)
 		}
 	case hub.Helm:
-		source = helm.NewTrackerSource(i, helm.WithGithubRL(t.svc.GithubRL))
+		source = helm.NewTrackerSource(i)
 	case hub.HelmPlugin:
 		source = helmplugin.NewTrackerSource(i)
 	case hub.Krew:

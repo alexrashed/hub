@@ -32,6 +32,7 @@ type TrackerServices struct {
 	Rc       RepositoryCloner
 	Oe       OLMOCIExporter
 	Ec       ErrorsCollector
+	Hc       HTTPClient
 	Is       img.Store
 	GithubRL *rate.Limiter
 	Logger   zerolog.Logger
@@ -52,11 +53,20 @@ type TrackerSource interface {
 // TrackerSourceInput represents the input provided to a TrackerSource to get
 // the packages available in a repository when tracking it.
 type TrackerSourceInput struct {
-	Ctx                context.Context
-	Cfg                *viper.Viper
 	Repository         *Repository
 	PackagesRegistered map[string]string
 	BasePath           string
-	Logger             zerolog.Logger
-	Ec                 ErrorsCollector
+	Svc                *TrackerSourceServices
+}
+
+// TrackerSourceServices represents a set of services that will be provided to
+// a TrackerSource instance so that it can perform its tasks.
+type TrackerSourceServices struct {
+	Ctx      context.Context
+	Cfg      *viper.Viper
+	Ec       ErrorsCollector
+	Hc       HTTPClient
+	Is       img.Store
+	Logger   zerolog.Logger
+	GithubRL *rate.Limiter
 }

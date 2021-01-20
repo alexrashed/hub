@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -84,6 +85,7 @@ func main() {
 		Rc:       &repo.Cloner{},
 		Oe:       &repo.OLMOCIExporter{},
 		Ec:       ec,
+		Hc:       &http.Client{Timeout: 10 * time.Second},
 		Is:       is,
 		GithubRL: githubRL,
 	}

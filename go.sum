@@ -1076,6 +1076,8 @@ github.com/urfave/cli v1.22.1/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtX
 github.com/urfave/cli/v2 v2.1.1/go.mod h1:SE9GqnLQmjVa0iPEY0f1w3ygNIYcIJ0OKPMoW2caLfQ=
 github.com/vdemeester/k8s-pkg-credentialprovider v1.18.1-0.20201019120933-f1d16962a4db/go.mod h1:grWy0bkr1XO6hqbaaCKaPXqkBVlMGHYG6PGykktwbJc=
 github.com/vektah/gqlparser v1.1.2/go.mod h1:1ycwN7Ij5njmMkPPAOaRFY4rET2Enx7IkVv3vaXspKw=
+github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50 h1:uxE3GYdXIOfhMv3unJKETJEhw78gvzuQqRX/rVirc2A=
+github.com/vincent-petithory/dataurl v0.0.0-20191104211930-d1553a71de50/go.mod h1:FHafX5vmDzyP+1CQATJn7WFKc9CvnvxyvZy6I1MrG/U=
 github.com/vmware/govmomi v0.20.3/go.mod h1:URlwyTFZX72RmxtxuaFL2Uj3fD1JTvZdx59bHWk6aFU=
 github.com/wasmerio/go-ext-wasm v0.3.1 h1:G95XP3fE2FszQSwIU+fHPBYzD0Csmd2ef33snQXNA5Q=
 github.com/wasmerio/go-ext-wasm v0.3.1/go.mod h1:VGyarTzasuS7k5KhSIGpM3tciSZlkP31Mp9VJTHMMeI=

@@ -1,7 +1,9 @@
 package falco
 
 import (
+	"errors"
 	"fmt"
+	"image"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/artifacthub/hub/internal/hub"
+	"github.com/artifacthub/hub/internal/img"
 	"github.com/artifacthub/hub/internal/pkg"
 	"github.com/artifacthub/hub/internal/repo"
 	"gopkg.in/yaml.v2"
@@ -32,8 +35,8 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	err := filepath.Walk(s.i.BasePath, func(pkgPath string, info os.FileInfo, err error) error {
 		// Return ASAP if context is cancelled
 		select {
-		case <-s.i.Ctx.Done():
-			return s.i.Ctx.Err()
+		case <-s.i.Svc.Ctx.Done():
+			return s.i.Svc.Ctx.Err()
 		default:
 		}
 
@@ -70,7 +73,7 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 		}
 
 		// Prepare and store package version
-		p := preparePackage(s.i.Repository, md, strings.TrimPrefix(pkgPath, s.i.BasePath))
+		p := s.preparePackage(s.i.Repository, md, strings.TrimPrefix(pkgPath, s.i.BasePath))
 		packagesAvailable[pkg.BuildKey(p)] = p
 
 		return nil
@@ -82,15 +85,8 @@ func (s *TrackerSource) GetPackagesAvailable() (map[string]*hub.Package, error) 
 	return packagesAvailable, nil
 }
 
-// warn is a helper that sends the error provided to the errors collector and
-// logs it as a warning.
-func (s *TrackerSource) warn(err error) {
-	s.i.Logger.Warn().Err(err).Send()
-	s.i.Ec.Append(s.i.Repository.RepositoryID, err)
-}
-
 // preparePackage prepares a package version using the rules metadata provided.
-func preparePackage(r *hub.Repository, md *RulesMetadata, pkgPath string) *hub.Package {
+func (s *TrackerSource) preparePackage(r *hub.Repository, md *RulesMetadata, pkgPath string) *hub.Package {
 	// Prepare source link url
 	var repoBaseURL, pkgsPath, provider string
 	matches := repo.GitRepoURLRE.FindStringSubmatch(r.URL)
@@ -130,7 +126,29 @@ func preparePackage(r *hub.Repository, md *RulesMetadata, pkgPath string) *hub.P
 		Repository: r,
 	}
 
+	// Register logo image if available
+	if md.Icon != "" {
+		githubToken := s.i.Svc.Cfg.GetString("tracker.githubToken")
+		data, err := img.Get(s.i.Svc.Ctx, s.i.Svc.Hc, githubToken, s.i.Svc.GithubRL, md.Icon)
+		if err != nil {
+			s.warn(fmt.Errorf("error downloading package %s version %s image: %w", md.Name, md.Version, err))
+		} else {
+			p.LogoURL = md.Icon
+			p.LogoImageID, err = s.i.Svc.Is.SaveImage(s.i.Svc.Ctx, data)
+			if err != nil && !errors.Is(err, image.ErrFormat) {
+				s.warn(fmt.Errorf("error saving package %s version %s image: %w", md.Name, md.Version, err))
+			}
+		}
+	}
+
 	return p
+}
+
+// warn is a helper that sends the error provided to the errors collector and
+// logs it as a warning.
+func (s *TrackerSource) warn(err error) {
+	s.i.Svc.Logger.Warn().Err(err).Send()
+	s.i.Svc.Ec.Append(s.i.Repository.RepositoryID, err)
 }
 
 // RulesMetadata represents some metadata for a Falco rules package.
