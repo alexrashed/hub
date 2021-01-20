@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -106,9 +107,16 @@ L:
 				<-limiter
 				wg.Done()
 			}()
-			t := tracker.New(svc, r)
+			logger := log.With().Str("repo", r.Name).Str("kind", hub.GetKindName(r.Kind)).Logger()
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error().Bytes("stacktrace", debug.Stack()).Interface("recover", r).Send()
+				}
+			}()
+			logger.Debug().Msg("tracking repository")
+			t := tracker.New(svc, r, logger)
 			if err := t.Run(); err != nil {
-				log.Error().Err(err).Str("repo", r.Name).Str("kind", hub.GetKindName(r.Kind)).Send()
+				logger.Error().Err(err).Send()
 				svc.Ec.Append(r.RepositoryID, err)
 			}
 		}(r)

@@ -19,7 +19,6 @@ import (
 	"github.com/artifacthub/hub/internal/tracker/krew"
 	"github.com/artifacthub/hub/internal/tracker/olm"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -38,11 +37,11 @@ type Tracker struct {
 }
 
 // New creates a new Tracker instance.
-func New(svc *hub.TrackerServices, r *hub.Repository) *Tracker {
+func New(svc *hub.TrackerServices, r *hub.Repository, logger zerolog.Logger) *Tracker {
 	return &Tracker{
 		svc:    svc,
 		r:      r,
-		logger: log.With().Str("repo", r.Name).Str("kind", hub.GetKindName(r.Kind)).Logger(),
+		logger: logger,
 	}
 }
 
@@ -160,14 +159,11 @@ func (t *Tracker) cloneRepository() (string, string, error) {
 		// Helm repositories are not cloned
 	case hub.OLM:
 		if strings.HasPrefix(t.r.URL, hub.RepositoryOCIPrefix) {
-			t.logger.Debug().Msg("exporting repository")
 			tmpDir, err = t.svc.Oe.ExportRepository(t.svc.Ctx, t.r)
 		} else {
-			t.logger.Debug().Msg("cloning repository")
 			tmpDir, packagesPath, err = t.svc.Rc.CloneRepository(t.svc.Ctx, t.r)
 		}
 	case hub.Falco, hub.HelmPlugin, hub.Krew, hub.OPA, hub.TBAction:
-		t.logger.Debug().Msg("cloning repository")
 		tmpDir, packagesPath, err = t.svc.Rc.CloneRepository(t.svc.Ctx, t.r)
 	}
 

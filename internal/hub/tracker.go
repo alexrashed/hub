@@ -34,6 +34,7 @@ type TrackerServices struct {
 	Ec       ErrorsCollector
 	Is       img.Store
 	GithubRL *rate.Limiter
+	Logger   zerolog.Logger
 }
 
 // TrackerSource defines the methods a TrackerSource implementation must
