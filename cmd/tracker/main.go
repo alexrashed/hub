@@ -67,11 +67,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("image store setup failed")
 	}
-	repos, err := tracker.GetRepositories(ctx, cfg, rm)
-	if err != nil {
-		log.Fatal().Err(err).Msg("error getting repositories")
-	}
-	ec := tracker.NewDBErrorsCollector(rm, repos)
+	ec := tracker.NewDBErrorsCollector(rm)
 	githubRL := rate.NewLimiter(rate.Every(1*time.Hour), githubMaxRequestsPerHour)
 	go func() {
 		<-time.After(1 * time.Hour)
@@ -91,6 +87,10 @@ func main() {
 	}
 
 	// Track registered repositories
+	repos, err := tracker.GetRepositories(ctx, cfg, rm)
+	if err != nil {
+		log.Fatal().Err(err).Msg("error getting repositories")
+	}
 	cfg.SetDefault("tracker.concurrency", 1)
 	limiter := make(chan struct{}, cfg.GetInt("tracker.concurrency"))
 	var wg sync.WaitGroup
@@ -115,7 +115,6 @@ L:
 					logger.Error().Bytes("stacktrace", debug.Stack()).Interface("recover", r).Send()
 				}
 			}()
-			logger.Debug().Msg("tracking repository")
 			t := tracker.New(svc, r, logger)
 			if err := t.Run(); err != nil {
 				logger.Error().Err(err).Send()

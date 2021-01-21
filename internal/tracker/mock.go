@@ -18,3 +18,8 @@ func (m *ErrorsCollectorMock) Append(repositoryID string, err error) {
 func (m *ErrorsCollectorMock) Flush() {
 	m.Called()
 }
+
+// Init implements the ErrorsCollector interface.
+func (m *ErrorsCollectorMock) Init(repositoryID string) {
+	m.Called(repositoryID)
+}

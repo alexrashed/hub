@@ -27,18 +27,11 @@ type DBErrorsCollector struct {
 }
 
 // NewDBErrorsCollector creates a new DBErrorsCollector instance.
-func NewDBErrorsCollector(
-	repoManager hub.RepositoryManager,
-	repos []*hub.Repository,
-) *DBErrorsCollector {
-	ec := &DBErrorsCollector{
+func NewDBErrorsCollector(repoManager hub.RepositoryManager) *DBErrorsCollector {
+	return &DBErrorsCollector{
 		rm:     repoManager,
 		errors: make(map[string][]error),
 	}
-	for _, r := range repos {
-		ec.errors[r.RepositoryID] = nil
-	}
-	return ec
 }
 
 // Append adds the error provided to the repository's list of errors.
@@ -80,4 +73,14 @@ func (c *DBErrorsCollector) Flush() {
 			log.Error().Err(err).Str("repoID", repositoryID).Send()
 		}
 	}
+}
+
+// Init initializes the list of errors for the repository provided. This will
+// allow the errors collector to reset the errors from a previous tracker run
+// when no errors have been collected from the current run.
+func (c *DBErrorsCollector) Init(repositoryID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.errors[repositoryID] = nil
 }

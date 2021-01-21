@@ -15,6 +15,7 @@ import (
 type ErrorsCollector interface {
 	Append(repositoryID string, err error)
 	Flush()
+	Init(repositoryID string)
 }
 
 // HTTPClient defines the methods an HTTPClient implementation must provide.

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/artifacthub/hub/internal/hub"
 	"github.com/artifacthub/hub/internal/repo"
 )
 
@@ -14,15 +13,10 @@ func TestDBErrorsCollector(t *testing.T) {
 
 	// Setup errors collector
 	rm := &repo.ManagerMock{}
-	repos := []*hub.Repository{
-		{
-			RepositoryID: "repo1",
-		},
-		{
-			RepositoryID: "repo2",
-		},
-	}
-	ec := NewDBErrorsCollector(rm, repos)
+	ec := NewDBErrorsCollector(rm)
+
+	// Initialize list of errors for repo1 (repo2 will be implicitly initialized)
+	ec.Init("repo1")
 
 	// Append some errors for both repositories
 	ec.Append("repo1", errors.New("error1"))

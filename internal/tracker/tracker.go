@@ -57,6 +57,10 @@ func (t *Tracker) Run() error {
 		return nil
 	}
 
+	// Initialize logs for this repository in the errors collector
+	t.logger.Debug().Msg("tracking repository")
+	t.svc.Ec.Init(t.r.RepositoryID)
+
 	// Clone repository when applicable and get its metadata
 	tmpDir, packagesPath, err := t.cloneRepository()
 	if err != nil {
