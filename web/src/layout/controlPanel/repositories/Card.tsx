@@ -94,7 +94,7 @@ const RepositoryCard = (props: Props) => {
 
     let messageAboutNextProcessedTime: string = '';
     if (nextProcessedTime > 0 && !props.repository.disabled) {
-      messageAboutNextProcessedTime = `(it will be processed again in ~ ${nextProcessedTime} minutes)`;
+      messageAboutNextProcessedTime = `(it will be checked for updates again in ~ ${nextProcessedTime} minutes)`;
     }
 
     if (hasErrors) {
