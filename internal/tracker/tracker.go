@@ -6,18 +6,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/artifacthub/hub/internal/hub"
 	"github.com/artifacthub/hub/internal/pkg"
 	"github.com/artifacthub/hub/internal/repo"
-	"github.com/artifacthub/hub/internal/tracker/falco"
-	"github.com/artifacthub/hub/internal/tracker/generic"
-	"github.com/artifacthub/hub/internal/tracker/helm"
-	"github.com/artifacthub/hub/internal/tracker/helmplugin"
-	"github.com/artifacthub/hub/internal/tracker/krew"
-	"github.com/artifacthub/hub/internal/tracker/olm"
 	"github.com/rs/zerolog"
 )
 
@@ -99,7 +92,7 @@ func (t *Tracker) Run() error {
 		}
 
 		// Check if this package should be ignored
-		if t.shouldIgnorePackage(p.Name, p.Version) {
+		if shouldIgnorePackage(t.md, p.Name, p.Version) {
 			continue
 		}
 
@@ -123,7 +116,7 @@ func (t *Tracker) Run() error {
 			// Unregister pkg if it's not available anymore or if it's ignored
 			name, version := pkg.ParseKey(key)
 			_, ok := packagesAvailable[key]
-			if !ok || t.shouldIgnorePackage(name, version) {
+			if !ok || shouldIgnorePackage(t.md, name, version) {
 				t.logger.Debug().Str("name", name).Str("v", version).Msg("unregistering package")
 				p := &hub.Package{
 					Name:       name,
@@ -138,7 +131,7 @@ func (t *Tracker) Run() error {
 	}
 
 	// Set verified publisher flag if needed
-	if err := t.setVerifiedPublisherFlag(); err != nil {
+	if err := setVerifiedPublisherFlag(t.svc.Ctx, t.svc.Rm, t.r, t.md); err != nil {
 		t.warn(fmt.Errorf("error setting verified publisher flag: %w", err))
 	}
 
@@ -209,63 +202,8 @@ func (t *Tracker) getPackagesAvailable() (map[string]*hub.Package, error) {
 			Logger: t.logger,
 		},
 	}
-
-	var source hub.TrackerSource
-	switch t.r.Kind {
-	case hub.Falco:
-		// Temporary solution to maintain backwards compatibility with
-		// the only Falco rules repository registered at the moment in
-		// artifacthub.io using the structure and metadata format used
-		// by the cloud native security hub.
-		if t.r.URL == cloudNativeSecurityHub {
-			source = falco.NewTrackerSource(i)
-		} else {
-			source = generic.NewTrackerSource(i)
-		}
-	case hub.Helm:
-		source = helm.NewTrackerSource(i)
-	case hub.HelmPlugin:
-		source = helmplugin.NewTrackerSource(i)
-	case hub.Krew:
-		source = krew.NewTrackerSource(i)
-	case hub.OLM:
-		source = olm.NewTrackerSource(i)
-	case hub.OPA, hub.TBAction:
-		source = generic.NewTrackerSource(i)
-	}
-
+	source := t.svc.SetupTrackerSource(i)
 	return source.GetPackagesAvailable()
-}
-
-// setVerifiedPublisherFlag sets the repository verified publisher flag for the
-// repository provided when needed.
-func (t *Tracker) setVerifiedPublisherFlag() error {
-	var verifiedPublisher bool
-	if t.md != nil {
-		if t.r.RepositoryID == t.md.RepositoryID {
-			verifiedPublisher = true
-		}
-	}
-	if t.r.VerifiedPublisher != verifiedPublisher {
-		err := t.svc.Rm.SetVerifiedPublisher(t.svc.Ctx, t.r.RepositoryID, verifiedPublisher)
-		if err != nil {
-			return fmt.Errorf("error setting verified publisher flag: %w", err)
-		}
-	}
-	return nil
-}
-
-// shouldIgnorePackage checks if the package provided should be ignored.
-func (t *Tracker) shouldIgnorePackage(name, version string) bool {
-	if t.md == nil {
-		return false
-	}
-	for _, ignoreEntry := range t.md.Ignore {
-		if matchesEntry(ignoreEntry, name, version) {
-			return true
-		}
-	}
-	return false
 }
 
 // warn is a helper that sends the error provided to the errors collector and
@@ -273,23 +211,4 @@ func (t *Tracker) shouldIgnorePackage(name, version string) bool {
 func (t *Tracker) warn(err error) {
 	t.logger.Warn().Err(err).Send()
 	t.svc.Ec.Append(t.r.RepositoryID, err)
-}
-
-// matchesEntry checks if the package name and version provide match a given
-// ignore entry.
-func matchesEntry(ignoreEntry *hub.RepositoryIgnoreEntry, name, version string) bool {
-	if ignoreEntry.Name != name {
-		return false
-	}
-	if version == "" {
-		return true
-	}
-	versionMatch, err := regexp.Match(ignoreEntry.Version, []byte(version))
-	if err != nil {
-		return false
-	}
-	if versionMatch {
-		return true
-	}
-	return false
 }

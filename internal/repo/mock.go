@@ -202,14 +202,13 @@ func (m *OCITagsGetterMock) Tags(ctx context.Context, r *hub.Repository) ([]stri
 	return tags, args.Error(1)
 }
 
-// OLMRepositoryExporterMock is a mock implementation of the
-// OLMRepositoryExporter interface.
-type OLMRepositoryExporterMock struct {
+// OLMOCIExporterMock is a mock implementation of the OLMOCIExporter interface.
+type OLMOCIExporterMock struct {
 	mock.Mock
 }
 
-// ExportRepository implements the OLMRepositoryExporter interface.
-func (m *OLMRepositoryExporterMock) ExportRepository(ctx context.Context, r *hub.Repository) (string, error) {
+// ExportRepository implements the OLMOCIExporter interface.
+func (m *OLMOCIExporterMock) ExportRepository(ctx context.Context, r *hub.Repository) (string, error) {
 	args := m.Called(ctx, r)
 	return args.String(0), args.Error(1)
 }

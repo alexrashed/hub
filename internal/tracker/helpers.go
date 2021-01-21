@@ -3,8 +3,15 @@ package tracker
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/artifacthub/hub/internal/hub"
+	"github.com/artifacthub/hub/internal/tracker/falco"
+	"github.com/artifacthub/hub/internal/tracker/generic"
+	"github.com/artifacthub/hub/internal/tracker/helm"
+	"github.com/artifacthub/hub/internal/tracker/helmplugin"
+	"github.com/artifacthub/hub/internal/tracker/krew"
+	"github.com/artifacthub/hub/internal/tracker/olm"
 	"github.com/spf13/viper"
 )
 
@@ -65,4 +72,88 @@ func GetRepositories(
 	}
 
 	return reposFiltered, nil
+}
+
+// SetupSource returns the tracker source that should be used for the
+// repository provided.
+func SetupSource(i *hub.TrackerSourceInput) hub.TrackerSource {
+	var source hub.TrackerSource
+	switch i.Repository.Kind {
+	case hub.Falco:
+		// Temporary solution to maintain backwards compatibility with
+		// the only Falco rules repository registered at the moment in
+		// artifacthub.io using the structure and metadata format used
+		// by the cloud native security hub.
+		if i.Repository.URL == cloudNativeSecurityHub {
+			source = falco.NewTrackerSource(i)
+		} else {
+			source = generic.NewTrackerSource(i)
+		}
+	case hub.Helm:
+		source = helm.NewTrackerSource(i)
+	case hub.HelmPlugin:
+		source = helmplugin.NewTrackerSource(i)
+	case hub.Krew:
+		source = krew.NewTrackerSource(i)
+	case hub.OLM:
+		source = olm.NewTrackerSource(i)
+	case hub.OPA, hub.TBAction:
+		source = generic.NewTrackerSource(i)
+	}
+	return source
+}
+
+// setVerifiedPublisherFlag sets the repository verified publisher flag for the
+// repository provided when needed.
+func setVerifiedPublisherFlag(
+	ctx context.Context,
+	rm hub.RepositoryManager,
+	r *hub.Repository,
+	md *hub.RepositoryMetadata,
+) error {
+	var verifiedPublisher bool
+	if md != nil {
+		if r.RepositoryID == md.RepositoryID {
+			verifiedPublisher = true
+		}
+	}
+	if r.VerifiedPublisher != verifiedPublisher {
+		err := rm.SetVerifiedPublisher(ctx, r.RepositoryID, verifiedPublisher)
+		if err != nil {
+			return fmt.Errorf("error setting verified publisher flag: %w", err)
+		}
+	}
+	return nil
+}
+
+// shouldIgnorePackage checks if the package provided should be ignored.
+func shouldIgnorePackage(md *hub.RepositoryMetadata, name, version string) bool {
+	if md == nil {
+		return false
+	}
+	for _, ignoreEntry := range md.Ignore {
+		if matchesEntry(ignoreEntry, name, version) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesEntry checks if the package name and version provide match a given
+// ignore entry.
+func matchesEntry(ignoreEntry *hub.RepositoryIgnoreEntry, name, version string) bool {
+	if ignoreEntry.Name != name {
+		return false
+	}
+	if version == "" {
+		return true
+	}
+	versionMatch, err := regexp.Match(ignoreEntry.Version, []byte(version))
+	if err != nil {
+		return false
+	}
+	if versionMatch {
+		return true
+	}
+	return false
 }

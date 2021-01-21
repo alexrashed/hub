@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"github.com/artifacthub/hub/internal/hub"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -22,4 +23,16 @@ func (m *ErrorsCollectorMock) Flush() {
 // Init implements the ErrorsCollector interface.
 func (m *ErrorsCollectorMock) Init(repositoryID string) {
 	m.Called(repositoryID)
+}
+
+// SourceMock is mock TrackerSource implementation.
+type SourceMock struct {
+	mock.Mock
+}
+
+// GetPackagesAvailable implements the TrackerSource interface.
+func (m *SourceMock) GetPackagesAvailable() (map[string]*hub.Package, error) {
+	args := m.Called()
+	data, _ := args.Get(0).(map[string]*hub.Package)
+	return data, args.Error(1)
 }

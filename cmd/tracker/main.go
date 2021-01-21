@@ -74,16 +74,17 @@ func main() {
 		githubRL.SetLimit(rate.Every(1 * time.Hour / githubMaxRequestsPerHour))
 	}()
 	svc := &hub.TrackerServices{
-		Ctx:      ctx,
-		Cfg:      cfg,
-		Rm:       rm,
-		Pm:       pm,
-		Rc:       &repo.Cloner{},
-		Oe:       &repo.OLMOCIExporter{},
-		Ec:       ec,
-		Hc:       &http.Client{Timeout: 10 * time.Second},
-		Is:       is,
-		GithubRL: githubRL,
+		Ctx:                ctx,
+		Cfg:                cfg,
+		Rm:                 rm,
+		Pm:                 pm,
+		Rc:                 &repo.Cloner{},
+		Oe:                 &repo.OLMOCIExporter{},
+		Ec:                 ec,
+		Hc:                 &http.Client{Timeout: 10 * time.Second},
+		Is:                 is,
+		GithubRL:           githubRL,
+		SetupTrackerSource: tracker.SetupSource,
 	}
 
 	// Track registered repositories

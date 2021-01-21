@@ -26,17 +26,17 @@ type HTTPClient interface {
 // TrackerServices represents a set of services that must be provided to a
 // Tracker instance so that it can perform its tasks.
 type TrackerServices struct {
-	Ctx      context.Context
-	Cfg      *viper.Viper
-	Rm       RepositoryManager
-	Pm       PackageManager
-	Rc       RepositoryCloner
-	Oe       OLMOCIExporter
-	Ec       ErrorsCollector
-	Hc       HTTPClient
-	Is       img.Store
-	GithubRL *rate.Limiter
-	Logger   zerolog.Logger
+	Ctx                context.Context
+	Cfg                *viper.Viper
+	Rm                 RepositoryManager
+	Pm                 PackageManager
+	Rc                 RepositoryCloner
+	Oe                 OLMOCIExporter
+	Ec                 ErrorsCollector
+	Hc                 HTTPClient
+	Is                 img.Store
+	GithubRL           *rate.Limiter
+	SetupTrackerSource TrackerSourceLoader
 }
 
 // TrackerSource defines the methods a TrackerSource implementation must
@@ -59,6 +59,10 @@ type TrackerSourceInput struct {
 	BasePath           string
 	Svc                *TrackerSourceServices
 }
+
+// TrackerSourceLoader represents a function that sets up the appropriate
+// tracker source for a given repository.
+type TrackerSourceLoader func(i *TrackerSourceInput) TrackerSource
 
 // TrackerSourceServices represents a set of services that will be provided to
 // a TrackerSource instance so that it can perform its tasks.
